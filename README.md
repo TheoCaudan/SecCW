@@ -72,6 +72,15 @@ python ReadCS8.py out.cs8 --mod fft --max-fft-samples 1048576
 python readCS8.py out.cs8 --mode all
 ```
 
+Ajout d'un "help" en utilisant argparse:
+
+```bash
+python readCS8.py --help 
+#ou
+python readCS8.py -h
+```
+(c.f. parse_args() ligne 150 du fichier ReadCS8.py)
+
 # 4. pq_morse_demo.py (demo)
 
 Demonstration du flux complet d'émission:
