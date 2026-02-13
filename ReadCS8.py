@@ -1,148 +1,182 @@
 #!/usr/bin/env python
-
-"""
-Resharp the signal from a CS8 file
-
-"""
-
 import numpy as np
 import pyfftw
 import matplotlib.pyplot as plt
 import sys
 import gc
+import argparse
+import os
 
-def read_img_real(input_file):
-
-    print("[*] Reading IQ and real parts...")
+def read_img_real(input_file, save=False, prefix=""):
     try:
-        # Lecture optimisée via numpy.memmap
         data = np.memmap(input_file, dtype=np.int8, mode='r')
-
-        # Les données alternent entre la partie réelle et imaginaire
         real = data[0::2]
         imag = data[1::2]
-
-        # Échantillonnage des données (si trop volumineux)
-        step = max(1, len(real) // 2000)  # Limite à 2000 points affichés
-        plt.figure(figsize=(10, 6))
-        plt.plot(real[::step], label="Partie Réelle (échantillon)", color="blue")
-        plt.title("Signal en baseband - Partie Réelle")
-        plt.xlabel("Échantillons")
+        step = max(1, len(real) // 2000)
+        
+        plt.figure(figsize=(10, 4))
+        plt.plot(real[::step], label="Real part (sample)", color="blue")
+        plt.title("Real part - Baseband signal")
+        plt.xlabel("Samples")
         plt.ylabel("Amplitude")
         plt.legend(loc="upper right")
-        plt.grid()
-        plt.show()
-
-        plt.figure(figsize=(10, 6))
-        plt.plot(imag[::step], label="Partie Imaginaire (échantillon)", color="red")
-        plt.title("Signal en baseband - Partie Imaginaire")
-        plt.xlabel("Échantillons")
+        plt.grid(True)
+        
+        if save:
+            out = f"{prefix}real.png"
+            plt.savefig(out, dpi=150, bbox_inches="tight")
+            print(f"[OUT] Figure saved : {out}")
+            plt.close()
+        else:
+            plt.show()
+            
+        plt.figure(figsize=(10, 4))
+        plt.plot(imag[::step], label="Imaginary part (sample)", color="red")
+        plt.title("Imaginary part - Baseband signal")
+        plt.xlabel("Samples")
         plt.ylabel("Amplitude")
         plt.legend(loc="upper right")
-        plt.grid()
-        plt.show()
-
-        # Libération explicite de la mémoire
+        plt.grid(True)
+        
+        if save:
+            out = f"{prefix}real.png"
+            plt.savefig(out, dpi=150, bbox_inches="tight")
+            print(f"[OUT] Figure saved : {out}")
+            plt.close()
+        else:
+            plt.show()
+            
         del data, real, imag
         gc.collect()
-
+        
     except FileNotFoundError:
-        print(f"file {input_file} not found")
+        print(f"[!] File {input_file} not found")
     except Exception as e:
-        print(f"Error:\n{str(e)}")
-
-
-def read_fft(input_file):
-
-    print("[*] FFT...")
+        print(f"[!] Error (read_img_real):\n{str(e)}")
+        
+def read_fft(input_file, sampling_rate=48000, max_fft_samples=2**20, save=False, prefix=""):
+    print("[OUT] FFT...")
     try:
-        # Lecture optimisée via numpy.memmap
         data = np.memmap(input_file, dtype=np.int8, mode='r')
-
-        # Les données alternent entre la partie réelle et imaginaire
-        real = data[0::2].astype(np.float32)  # Conversion en float32
-        imag = data[1::2].astype(np.float32)  # Conversion en float32
-        iq_signal = real + 1j * imag
-
-        # Taille optimale pour la FFT
-        optimal_size = 2**np.ceil(np.log2(len(iq_signal))).astype(int)
-        iq_signal = np.pad(iq_signal, (0, optimal_size - len(iq_signal)), mode='constant')
-
-        # Utilisation de pyFFTW pour accélérer la FFT
-        fft_object = pyfftw.builders.fft(iq_signal, threads=4)  # Utilisation de 4 threads
-        fft_signal = pyfftw.interfaces.numpy_fft.fftshift(fft_object())
-        fft_magnitude = 20 * np.log10(np.abs(fft_signal))
-
-        # Échantillonnage pour l'affichage graphique
-        step = max(1, len(fft_magnitude) // 1000)  # Limite à 1000 points affichés
-        plt.figure(figsize=(10, 6))
-        plt.plot(fft_magnitude[::step], label="Spectre du Signal (FFT)", color="green")
-        plt.title("Spectre en Fréquence (FFT)")
-        plt.xlabel("Fréquence (échantillons)")
-        plt.ylabel("Amplitude (dB)")
-        plt.legend(loc="upper right")
-        plt.grid()
-        plt.show()
-
-        # Libération explicite de la mémoire
-        del data, real, imag, iq_signal, fft_signal, fft_magnitude
-        gc.collect()
-
-    except FileNotFoundError:
-        print(f"file {input_file} not found")
-    except Exception as e:
-        print(f"Error:\n{str(e)}")
-
-
-def read_amplitude(input_file, sampling_rate=8000000): #default sample rate = 8000000 (cf. script qui créé le CS8 à transmettre)
-
-    print("[*] Amp vs Time...")
-    try:
-        # Lecture optimisée via numpy.memmap
-        data = np.memmap(input_file, dtype=np.int8, mode='r')
-
-        # Extraction des parties réelle et imaginaire avec conversion
-        real = data[0::2].astype(np.float32)  # Conversion en float32 pour compatibilité
+        real = data[0::2].astype(np.float32)
         imag = data[1::2].astype(np.float32)
         iq_signal = real + 1j * imag
-
-        # Calcul rapide de l'amplitude complexe
+        
+        n_samples = min(len(iq_signal), max_fft_samples)
+        if len(iq_signal) > max_fft_samples:
+            print(f"[OUT] FFT limited to {n_samples} samples on {len(iq_signal)}")
+            
+        iq_signal = iq_signal[:n_samples]
+        
+        optimal_size = 2**int(np.ceil(np.log2(n_samples)))
+        if optimal_size > n_samples:
+            iq_signal = np.pad(iq_signal, (0, optimal_size - n_samples), mode='constant')
+            
+        fft_in = pyfftw.empty_aligned(optimal_size, dtype='complex64')
+        fft_out = pyfftw.empty_aligned(optimal_size, dtype='complex64')
+        fft_in[:] = iq_signal.astype('complex64')
+        
+        fft_object = pyfftw.FFTW(fft_in, fft_out, threads=4)
+        fft_result = fft_object()
+        fft_shifted = np.fft.fftshift(fft_result)
+        fft_magnitude = 20 * np.log10(np.maximum(np.abs(fft_shifted), 1e-12))
+        
+        freqs = np.linspace(-sampling_rate / 2, sampling_rate / 2, num=len(fft_magnitude))
+        
+        step = max(1, len(fft_magnitude) // 2000)
+        
+        plt.figure(figsize=(10, 5))
+        plt.plot(freqs[::step], fft_magnitude[::step], label="Signal spectre (FFT)", color="green")
+        plt.title("Frequency spectre (FFT)")
+        plt.xlabel("Frequency (Hz)")
+        plt.ylabel("Amplitude (dB)")
+        plt.legend(loc="upper right")
+        plt.grid(True)
+        
+        if save:
+            out = f"{prefix}fft.png"
+            plt.savefig(out, dpi=150, bbox_inches="tight")
+            print(f"[OUT] Figure saved : {out}")
+            plt.close()
+        else:
+            plt.show()
+            
+        del data, real, imag, iq_signal, fft_in, fft_out, fft_result, fft_shifted, fft_magnitude, freqs
+        gc.collect()
+        
+    except FileNotFoundError:
+        print(f"[!] File {input_file} not found")
+    except Exception as e:
+        print(f"[!] Error (read_fft):\n{str(e)}")
+        
+def read_amplitude(input_file, sampling_rate=48000, save=False, prefix=""):
+    print("[OUT] Amplitude vs Time...")
+    try:
+        data = np.memmap(input_file, dtype=np.int8, mode='r')
+        real = data[0::2].astype(np.float32)
+        imag = data[1::2].astype(np.float32)
+        iq_signal = real + 1j * imag
+        
         amplitude = np.abs(iq_signal)
-
-        # Création de l'axe temporel (éviter de calculer un par un)
         time = np.linspace(0, len(amplitude) / sampling_rate, num=len(amplitude))
-
-        # Optimisation de l'affichage avec échantillonnage
-        step = max(1, len(amplitude) // 40000)  # Afficher 40000 points maximum
-        plt.figure(figsize=(10, 6))
-        plt.plot(time[::step], amplitude[::step], label="Amplitude du Signal", color="purple")
-        plt.title("Amplitude du Signal en Fonction du Temps")
-        plt.xlabel("Temps (s)")
+        step = max(1, len(amplitude) // 40000)
+        
+        plt.figure(figsize=(10, 5))
+        plt.plot(time[::step], amplitude[::step], label="Signal amplitude", color="purple")
+        plt.title("Signal amplitude from Time")
+        plt.xlabel("Time (s)")
         plt.ylabel("Amplitude")
         plt.legend(loc="upper right")
-        plt.grid()
-        plt.show()
-
-        # Libération explicite des ressources
+        plt.grid(True)
+        
+        if save:
+            out = f"{prefix}fft.png"
+            plt.savefig(out, dpi=150, bbox_inches="tight")
+            print(f"[OUT] Figure saved : {out}")
+            plt.close()
+        else:
+            plt.show()
+        
         del data, real, imag, iq_signal, amplitude, time
         gc.collect()
-
+        
     except FileNotFoundError:
-        print(f"Fichier introuvable : {input_file}")
+        print(f"[!] File {input_file} not found")
     except ValueError:
-        print("Erreur de type dans les données. Vérifiez le fichier.")
+        print("[!] Error data type. Please check the file")
     except Exception as e:
-        print(f"Une erreur est survenue :\n{str(e)}")
-
+        print(f"[!] Error (read_amplitude):\n{str(e)}")
+        
+def parse_args():
+    parser = argparse.ArgumentParser(description="CS8 file analyze")
+    parser.add_argument("input_file", help="CS8 file in input")
+    parser.add_argument("--mode", choices=["amplitude", "fft", "iq", "all"], default="amplitude",
+                        help="Display type: amplitude, fft, iq (real/imag), or all (default: amplitude)",)
+    parser.add_argument("--sampling_rate", type=float, default=48000,
+                        help="Sample rate in Hz (default: 48000)",)
+    parser.add_argument("--max-fft-samples", type=int, default=2**20,
+                        help="Max number of samples used for FFT (default: 2**20 about 1M)",)
+    parser.add_argument("--save", action="store_true",
+                        help="Save figures as .png instead of displaying them",)
+    return parser.parse_args()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: <script> <input file>")
-        print("\nExemple :")
-        print("python ./CWToCS8.py EFAADCF7EA0A786EF7B4EF7504605970 test-to-transmit.cs8")
-        sys.exit(0)
-
+    args = parse_args()
+    input_file = args.input_file
     
-    #read_img_real(sys.argv[1]) 
-    read_amplitude(sys.argv[1])
-    #read_fft(sys.argv[1])
+    if not os.path.isfile(input_file):
+        print(f"[!] File {input_file} not found")
+        sys.exit(1)
+        
+    prefix = os.path.splitext(os.path.basename(input_file))[0] + "_"
+    
+    if args.mode in ("iq", "all"):
+        read_img_real(input_file, save=args.save, prefix=prefix,)
+        
+    if args.mode in ("amplitude", "all"):
+        read_amplitude(input_file, sampling_rate=args.sampling_rate, save=args.save, prefix=prefix,)
+    
+    if args.modein ("fft", "all"):
+        read_fft(input_file, sampling_rate=args.sampling_rate, max_fft_samples=args.max_fft_samples, save=args.save, prefix=prefix,)
+        
+    print("[OUT] Done")
