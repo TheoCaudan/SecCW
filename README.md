@@ -97,6 +97,8 @@ Et il convertit le Base64 en CW puis en CS8 :
 
 - `convert_to_CW`, `write_toCS8`
 
+(petit bonus "UX", on s'est amusé avec l'ajout d'une fonction usage() qui print le guide d'utilisation, ce script est appelé lorsque le nombre d'arguments est inférieur au necessaire ou bien quand le programme est mal appelé) (c.f. usage() ligne 41 et main() ligne 49 du fichier pq_morse_demo.py)
+
 # 5. Notes sur les clefs
 
 - `kyber_pk.b64` : clef publique (souvent utilisée comme clef semi-publique dans notre contexte => publique seulement pour un nombre limitée de personne)
