@@ -171,12 +171,12 @@ if __name__ == "__main__":
     prefix = os.path.splitext(os.path.basename(input_file))[0] + "_"
     
     if args.mode in ("iq", "all"):
-        read_img_real(input_file, save=args.save, prefix=prefix,)
+        read_img_real(input_file, save=args.save, prefix=prefix)
         
     if args.mode in ("amplitude", "all"):
-        read_amplitude(input_file, sampling_rate=args.sampling_rate, save=args.save, prefix=prefix,)
+        read_amplitude(input_file, sampling_rate=args.sampling_rate, save=args.save, prefix=prefix)
     
-    if args.modein ("fft", "all"):
-        read_fft(input_file, sampling_rate=args.sampling_rate, max_fft_samples=args.max_fft_samples, save=args.save, prefix=prefix,)
+    if args.mode in ("fft", "all"):
+        read_fft(input_file, sampling_rate=args.sampling_rate, max_fft_samples=args.max_fft_samples, save=args.save, prefix=prefix)
         
     print("[OUT] Done")
